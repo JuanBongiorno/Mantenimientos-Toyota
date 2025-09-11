@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Información del Dispenser</title>
+    <style>
+        body {
+            background-image: url(./pexels-berend-1452701.jpg);
+            background-repeat: no-repeat;
+            background-size: cover;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+            margin: 0;
+            flex-direction: column;
+        }
+        .container {
+            opacity: 80%;
+            background-color: #fff;
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            text-align: left;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+        .result-item {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .result-item strong {
+            color: #007bff;
+        }
+        #error-message {
+            color: red;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Información del Dispenser</h1>
+        <label for="dispenserId">Introduce el ID del Dispenser:</label>
+        <input type="text" id="dispenserId" placeholder="Ej: 12345">
+        <button onclick="buscarDispenser()">Buscar</button>
+        <div id="result"></div>
+        <div id="error-message"></div>
+    </div>
+
+    <script>
+        // URL de tu Google Sheet (Asegúrate de que sea pública o que tenga los permisos correctos)
+        // RECUERDA CAMBIAR ESTA URL POR LA TUYA, PUBLICADA COMO CSV.
+        // Debe ser del estilo: https://docs.google.com/spreadsheets/d/TU_ID_DE_HOJA/gviz/tq?tqx=out:csv&gid=0
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS8AC5P-pFwTBeNyVYoqdOOcKNHsN3JwNuD8skXut107w3NN5tHL2-q90DW_Upu6MAgIb6FwQCFXsaL/pub?gid=2119377470&single=true&output=csv';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const idFromQR = params.get('idDispenser');
+            if (idFromQR) {
+                document.getElementById('dispenserId').value = idFromQR;
+                buscarDispenser();
+            }
+        });
+
+        async function buscarDispenser() {
+            const dispenserId = document.getElementById('dispenserId').value.trim();
+            const resultDiv = document.getElementById('result');
+            const errorMessageDiv = document.getElementById('error-message');
+            resultDiv.innerHTML = '';
+            errorMessageDiv.innerHTML = '';
+
+            if (!dispenserId) {
+                errorMessageDiv.innerHTML = 'Por favor, introduce un ID de dispenser.';
+                return;
+            }
+
+            resultDiv.innerHTML = '<p>Buscando...</p>';
+
+            try {
+                const response = await fetch(SPREADSHEET_URL);
+                const csvText = await response.text();
+                const lines = csvText.split('\n');
+                
+                // Asumiendo que la primera línea es el encabezado
+                const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
+                let found = false;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const data = lines[i].split(',').map(item => item.trim().replace(/"/g, ''));
+                    
+                    // ***************************************************************
+                    // CORRECCIÓN: el ID del dispenser está en la tercera columna (índice 2)
+                    // ***************************************************************
+                    if (data[2] === dispenserId) { 
+                        found = true;
+                        let output = '<h2>Datos del Dispenser ' + dispenserId + ':</h2>';
+                        headers.forEach((header, index) => {
+                            output += `<p class="result-item"><strong>${header}:</strong> ${data[index] || 'N/A'}</p>`;
+                        });
+                        resultDiv.innerHTML = output;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    errorMessageDiv.innerHTML = `No se encontró información para el ID de dispenser: ${dispenserId}`;
+                    resultDiv.innerHTML = ''; // Limpiar el mensaje de "Buscando..."
+                }
+
+            } catch (error) {
+                console.error('Error al cargar los datos:', error);
+                errorMessageDiv.innerHTML = 'Error al cargar los datos. Asegúrate de que el Google Sheet sea accesible públicamente y la URL es correcta.';
+                resultDiv.innerHTML = ''; // Limpiar el mensaje de "Buscando..."
+            }
+        }
+    </script>
+</body>
+</html>
