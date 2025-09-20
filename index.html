@@ -27,6 +27,7 @@
             text-align: center;
             width: 90%;
             max-width: 400px;
+            position: relative; /* Necesario para el modal */
         }
         h1 {
             color: #333;
@@ -55,6 +56,7 @@
             cursor: pointer;
             font-size: 16px;
             transition: background-color 0.3s ease;
+            margin: 5px; /* Espacio entre botones */
         }
         button:hover {
             background-color: #0056b3;
@@ -77,6 +79,54 @@
             margin-top: 15px;
             font-weight: bold;
         }
+
+        /* Estilos para el modal de observaciones */
+        .modal {
+            display: none; /* Oculto por defecto */
+            position: fixed; /* Posición fija para cubrir toda la pantalla */
+            z-index: 1; /* Estar por encima de otros elementos */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto; /* Habilitar scroll si es necesario */
+            background-color: rgba(0,0,0,0.4); /* Fondo semi-transparente */
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto; /* Centrar vertical y horizontalmente */
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 500px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            text-align: left;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        textarea {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            min-height: 100px;
+            resize: vertical;
+        }
     </style>
 </head>
 <body>
@@ -85,15 +135,25 @@
         <label for="dispenserId">Introduce el ID del Dispenser:</label>
         <input type="text" id="dispenserId" placeholder="Ej: 12345">
         <button onclick="buscarDispenser()">Buscar</button>
+        <button onclick="openObservationsModal()">Observaciones</button>
         <div id="result"></div>
         <div id="error-message"></div>
     </div>
 
+    <!-- Modal para observaciones -->
+    <div id="observationsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeObservationsModal()">&times;</span>
+            <h2>Agregar Observaciones</h2>
+            <label for="observationsText">Escribe tus observaciones aquí:</label>
+            <textarea id="observationsText" placeholder="Ingresa tus comentarios..."></textarea>
+            <button onclick="sendObservations()">Enviar Observaciones</button>
+        </div>
+    </div>
+
     <script>
-        // URL de tu Google Sheet (Asegúrate de que sea pública o que tenga los permisos correctos)
-        // RECUERDA CAMBIAR ESTA URL POR LA TUYA, PUBLICADA COMO CSV.
-        // Debe ser del estilo: https://docs.google.com/spreadsheets/d/TU_ID_DE_HOJA/gviz/tq?tqx=out:csv&gid=0
-        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS8AC5P-pFwTBeNyVYoqdOOcKNHsN3JwNuD8skXut107w3NN5tHL2-q90DW_Upu6MAgIb6FwQCFXsaL/pub?gid=2119377470&single=true&output=csv';
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRRrF3j6SBzimSYqQXfSqLBoNtun4ZYI4p9Rd_3xZyf4PDaMD3UexFCmEK8qLeeDoPyUK8a2CPjWHB4/pub?gid=537343586&single=true&output=csv '; // Reemplaza con tu URL real
+        const RECIPIENT_EMAIL = 'logistica@suragua.com.ar';
 
         document.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
@@ -123,16 +183,12 @@
                 const csvText = await response.text();
                 const lines = csvText.split('\n');
                 
-                // Asumiendo que la primera línea es el encabezado
                 const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
                 let found = false;
 
                 for (let i = 1; i < lines.length; i++) {
                     const data = lines[i].split(',').map(item => item.trim().replace(/"/g, ''));
                     
-                    // ***************************************************************
-                    // CORRECCIÓN: el ID del dispenser está en la tercera columna (índice 2)
-                    // ***************************************************************
                     if (data[2] === dispenserId) { 
                         found = true;
                         let output = '<h2>Datos del Dispenser ' + dispenserId + ':</h2>';
@@ -146,13 +202,64 @@
 
                 if (!found) {
                     errorMessageDiv.innerHTML = `No se encontró información para el ID de dispenser: ${dispenserId}`;
-                    resultDiv.innerHTML = ''; // Limpiar el mensaje de "Buscando..."
+                    resultDiv.innerHTML = '';
                 }
 
             } catch (error) {
                 console.error('Error al cargar los datos:', error);
                 errorMessageDiv.innerHTML = 'Error al cargar los datos. Asegúrate de que el Google Sheet sea accesible públicamente y la URL es correcta.';
-                resultDiv.innerHTML = ''; // Limpiar el mensaje de "Buscando..."
+                resultDiv.innerHTML = '';
+            }
+        }
+
+        // Funciones para el modal de observaciones
+        function openObservationsModal() {
+            document.getElementById('observationsModal').style.display = 'flex'; // Usar flex para centrar
+        }
+
+        function closeObservationsModal() {
+            document.getElementById('observationsModal').style.display = 'none';
+            document.getElementById('observationsText').value = ''; // Limpiar el texto al cerrar
+        }
+
+        function sendObservations() {
+            const observations = document.getElementById('observationsText').value.trim();
+            const dispenserId = document.getElementById('dispenserId').value.trim();
+            const resultDiv = document.getElementById('result'); // Obtener el div de resultados
+
+            if (!observations) {
+                alert('Por favor, escribe tus observaciones antes de enviar.');
+                return;
+            }
+
+            if (!dispenserId) {
+                alert('No hay un ID de dispenser seleccionado. Por favor, busca un dispenser primero.');
+                return;
+            }
+
+            let dispenserInfo = '';
+            // Recuperar la información mostrada en el resultDiv
+            if (resultDiv.innerText) {
+                // Eliminar el encabezado "Datos del Dispenser XXXX:" para evitar duplicidad
+                dispenserInfo = '\n\nInformación del Dispenser:\n' + resultDiv.innerText.replace(/Datos del Dispenser \d+:\n/, '').trim();
+            }
+
+            const subject = encodeURIComponent(`Observaciones sobre Dispenser ID: ${dispenserId}`);
+            // Incluir dispenserInfo en el cuerpo del correo
+            const body = encodeURIComponent(`ID del Dispenser: ${dispenserId}\n\nObservaciones:\n${observations}${dispenserInfo}`);
+            
+            // Usar mailto para abrir el cliente de correo predeterminado del usuario
+            window.location.href = `mailto:${RECIPIENT_EMAIL}?subject=${subject}&body=${body}`;
+
+            closeObservationsModal();
+            alert('Las observaciones se han preparado para enviar en tu cliente de correo.');
+        }
+
+        // Cerrar el modal si se hace clic fuera de su contenido
+        window.onclick = function(event) {
+            const modal = document.getElementById('observationsModal');
+            if (event.target == modal) {
+                closeObservationsModal();
             }
         }
     </script>
