@@ -167,8 +167,6 @@
         function parseDateString(value) {
             if (!value) return NaN;
             const trimmed = value.trim();
-            const iso = Date.parse(trimmed);
-            if (!Number.isNaN(iso)) return iso;
 
             const european = trimmed.match(/^\s*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*$/);
             if (european) {
@@ -176,6 +174,9 @@
                 if (year.length === 2) year = '20' + year;
                 return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
             }
+
+            const iso = Date.parse(trimmed);
+            if (!Number.isNaN(iso)) return iso;
 
             return NaN;
         }
@@ -303,8 +304,19 @@
                     latestData = fallbackData;
                 }
 
+                console.log('buscarDispenser:', {
+                    dispenserId,
+                    idIndex,
+                    dateIndices,
+                    selectedRow: latestData,
+                    selectedDate: latestTimestamp === -Infinity ? null : new Date(latestTimestamp).toISOString(),
+                    rowsFound: rows.filter((row, index) => index > 0 && row[idIndex] === dispenserId).length
+                });
+
                 if (latestData) {
+                    const selectedDateText = latestTimestamp !== -Infinity ? new Date(latestTimestamp).toLocaleString('es-AR') : 'Fecha no disponible';
                     let output = '<h2>Datos del Dispenser ' + dispenserId + ':</h2>';
+                    output += `<p class="result-item"><strong>Registro seleccionado:</strong> ${selectedDateText}</p>`;
                     headers.forEach((header, index) => {
                         output += `<p class="result-item"><strong>${header}:</strong> ${latestData[index] || 'N/A'}</p>`;
                     });
