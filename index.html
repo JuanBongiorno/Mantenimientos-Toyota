@@ -164,6 +164,69 @@
             }
         });
 
+        function parseDateString(value) {
+            if (!value) return NaN;
+            const trimmed = value.trim();
+            const iso = Date.parse(trimmed);
+            if (!Number.isNaN(iso)) return iso;
+
+            const european = trimmed.match(/^\s*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*$/);
+            if (european) {
+                let [, day, month, year, hour = '0', minute = '0', second = '0'] = european;
+                if (year.length === 2) year = '20' + year;
+                return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+            }
+
+            return NaN;
+        }
+
+        function parseCsv(csvText) {
+            const rows = [];
+            let row = [];
+            let field = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < csvText.length; i++) {
+                const char = csvText[i];
+
+                if (inQuotes) {
+                    if (char === '"') {
+                        if (csvText[i + 1] === '"') {
+                            field += '"';
+                            i++;
+                        } else {
+                            inQuotes = false;
+                        }
+                    } else {
+                        field += char;
+                    }
+                } else {
+                    if (char === '"') {
+                        inQuotes = true;
+                    } else if (char === ',') {
+                        row.push(field);
+                        field = '';
+                    } else if (char === '\r') {
+                        continue;
+                    } else if (char === '\n') {
+                        row.push(field);
+                        rows.push(row);
+                        row = [];
+                        field = '';
+                    } else {
+                        field += char;
+                    }
+                }
+            }
+
+            if (field !== '' || row.length > 0) {
+                row.push(field);
+                rows.push(row);
+            }
+
+            return rows.filter(r => r.some(cell => cell.trim() !== ''));
+        }
+
         async function buscarDispenser() {
             const dispenserId = document.getElementById('dispenserId').value.trim();
             const resultDiv = document.getElementById('result');
@@ -181,28 +244,63 @@
             try {
                 const response = await fetch(SPREADSHEET_URL);
                 const csvText = await response.text();
-                const lines = csvText.split('\n').filter(line => line.trim() !== '');
+                const rows = parseCsv(csvText);
 
-                const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
-                const dateIndex = headers.findIndex(header => /fecha|date/i.test(header));
+                if (rows.length < 2) {
+                    throw new Error('El archivo CSV no contiene datos válidos.');
+                }
+
+                const headers = rows[0].map(header => header.trim().replace(/"/g, ''));
+                const normalizedHeaders = headers.map(header => header.toLowerCase().replace(/\s+/g, '').replace(/[_\-.\/()]/g, ''));
+                const idCandidates = ['iddispenser', 'dispenserid', 'id', 'codigo', 'codigodisp', 'codigodispensador'];
+
+                let idIndex = normalizedHeaders.findIndex(header => idCandidates.includes(header));
+                if (idIndex < 0) {
+                    idIndex = 2;
+                }
+
+                const possibleDateIndices = normalizedHeaders
+                    .map((header, index) => ({ header, index }))
+                    .filter(({ header }) => /(fecha|date|hora)/.test(header));
+
+                const scoreHeader = header => {
+                    if (/fechahora|fecha.*hora|hora.*fecha/.test(header)) return 1;
+                    if (/fechamantenimiento|fechamant|fechamante/.test(header)) return 2;
+                    if (/fecha/.test(header) || /date/.test(header)) return 3;
+                    return 99;
+                };
+
+                possibleDateIndices.sort((a, b) => scoreHeader(a.header) - scoreHeader(b.header));
+                const dateIndices = possibleDateIndices.map(item => item.index);
                 let latestData = null;
                 let latestTimestamp = -Infinity;
+                let fallbackData = null;
 
-                for (let i = 1; i < lines.length; i++) {
-                    const data = lines[i].split(',').map(item => item.trim().replace(/"/g, ''));
-                    if (data[2] !== dispenserId) continue;
+                for (let i = 1; i < rows.length; i++) {
+                    const rowData = rows[i].map(item => item.trim());
+                    if (rowData[idIndex] !== dispenserId) continue;
 
-                    if (dateIndex >= 0 && data[dateIndex]) {
-                        const parsedDate = Date.parse(data[dateIndex]);
-                        if (!Number.isNaN(parsedDate) && parsedDate >= latestTimestamp) {
-                            latestTimestamp = parsedDate;
-                            latestData = data;
-                        } else if (Number.isNaN(parsedDate) && !latestData) {
-                            latestData = data;
+                    let rowTimestamp = NaN;
+                    for (const idx of dateIndices) {
+                        if (!rowData[idx]) continue;
+                        const parsedDate = parseDateString(rowData[idx]);
+                        if (!Number.isNaN(parsedDate) && (Number.isNaN(rowTimestamp) || parsedDate > rowTimestamp)) {
+                            rowTimestamp = parsedDate;
+                        }
+                    }
+
+                    if (!Number.isNaN(rowTimestamp)) {
+                        if (rowTimestamp >= latestTimestamp || latestData === null) {
+                            latestTimestamp = rowTimestamp;
+                            latestData = rowData;
                         }
                     } else {
-                        latestData = data;
+                        fallbackData = rowData;
                     }
+                }
+
+                if (!latestData) {
+                    latestData = fallbackData;
                 }
 
                 if (latestData) {
