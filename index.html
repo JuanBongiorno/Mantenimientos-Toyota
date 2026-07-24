@@ -181,26 +181,37 @@
             try {
                 const response = await fetch(SPREADSHEET_URL);
                 const csvText = await response.text();
-                const lines = csvText.split('\n');
-                
+                const lines = csvText.split('\n').filter(line => line.trim() !== '');
+
                 const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
-                let found = false;
+                const dateIndex = headers.findIndex(header => /fecha|date/i.test(header));
+                let latestData = null;
+                let latestTimestamp = -Infinity;
 
                 for (let i = 1; i < lines.length; i++) {
                     const data = lines[i].split(',').map(item => item.trim().replace(/"/g, ''));
-                    
-                    if (data[2] === dispenserId) { 
-                        found = true;
-                        let output = '<h2>Datos del Dispenser ' + dispenserId + ':</h2>';
-                        headers.forEach((header, index) => {
-                            output += `<p class="result-item"><strong>${header}:</strong> ${data[index] || 'N/A'}</p>`;
-                        });
-                        resultDiv.innerHTML = output;
-                        break;
+                    if (data[2] !== dispenserId) continue;
+
+                    if (dateIndex >= 0 && data[dateIndex]) {
+                        const parsedDate = Date.parse(data[dateIndex]);
+                        if (!Number.isNaN(parsedDate) && parsedDate >= latestTimestamp) {
+                            latestTimestamp = parsedDate;
+                            latestData = data;
+                        } else if (Number.isNaN(parsedDate) && !latestData) {
+                            latestData = data;
+                        }
+                    } else {
+                        latestData = data;
                     }
                 }
 
-                if (!found) {
+                if (latestData) {
+                    let output = '<h2>Datos del Dispenser ' + dispenserId + ':</h2>';
+                    headers.forEach((header, index) => {
+                        output += `<p class="result-item"><strong>${header}:</strong> ${latestData[index] || 'N/A'}</p>`;
+                    });
+                    resultDiv.innerHTML = output;
+                } else {
                     errorMessageDiv.innerHTML = `No se encontró información para el ID de dispenser: ${dispenserId}`;
                     resultDiv.innerHTML = '';
                 }
